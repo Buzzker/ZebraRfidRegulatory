@@ -185,7 +185,32 @@ namespace ZebraRFIDXamarinDemo.Models
         {
           readerDevice = ReadersList[index];
           rfidReader = readerDevice.RFIDReader;
-          rfidReader.Connect();
+          try
+          {
+            rfidReader.Connect();
+            rfidReader.Config.ResetFactoryDefaults(); // Reset regulatory for testing setting it on first run (call after connect).
+          }
+          catch (OperationFailureException ex)
+          {
+            if (ex.Results != RFIDResults.RfidReaderRegionNotConfigured)
+            { throw; }
+            // It will throw exception but still connect.
+            // Set regulatory.
+            RegulatoryConfig regulatoryConfig = rfidReader.Config.RegulatoryConfig;
+            RegionInfo regionInfo = rfidReader.ReaderCapabilities.SupportedRegions.GetRegionInfo(11); // DEU
+            var length = rfidReader.ReaderCapabilities.SupportedRegions.Length();
+            regulatoryConfig.Region = regionInfo.RegionCode;
+            regulatoryConfig.SetIsHoppingOn(regionInfo.IsHoppingConfigurable);
+            var channels = regionInfo.GetSupportedChannels(); // All 4 channels for DEU. Doesn't work for any region.
+            if (channels == null)
+            {
+              // Somehow channels always null.
+              channels = new[] { "865700", "866300", "866900", "867500" }; // Try set them manually.
+            }
+            regulatoryConfig.SetEnabledChannels(channels);
+            rfidReader.Config.RegulatoryConfig = regulatoryConfig; /// Throws operation failure exception with "Results" <see cref="RFIDResults.RfidApiUnknownError"/>
+            rfidReader.Connect(); // I guess reconnect here if it ever succeeds ? Not reaching anyway
+          }
           ConfigureReader();
           ReaderConnectionEvent?.Invoke(true);
           Console.WriteLine("Connected " + rfidReader.HostName);
